@@ -1,3 +1,12 @@
+"""
+pyload
+------
+
+A simple module for small loading animations in the console.
+The base class was derived from a
+[stackoverflow answer](https://stackoverflow.com/a/66558182).
+"""
+
 from itertools import cycle
 from threading import Thread
 from time import sleep
