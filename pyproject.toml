@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "pyload"
+version = "0.1.0"
+description = "A simple Python module for console loading animations."
+authors = ["Adam Bates <adambates923@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/abates20/pyload"
+
+
+[tool.poetry.dependencies]
+python = ">=3.9"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
