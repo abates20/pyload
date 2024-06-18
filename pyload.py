@@ -14,7 +14,7 @@ COLORS = {
 BOLD = "\033[1m"
 ENDC = "\033[0m"
 
-class BaseLoader:
+class _BaseLoader:
     """
     The base class for small loading animations in the console.
     """
@@ -24,7 +24,7 @@ class BaseLoader:
     def __init__(self, loading_msg: str = "Loading...", finished_msg: str = "Done!",
                  timeout = 0.1, color = "white"):
         """
-        Initialize the BaseLoader.
+        Initialize the Loader.
 
         Parameters
         ----------
@@ -43,7 +43,7 @@ class BaseLoader:
         self._timeout = timeout
         self._color = COLORS.get(color, "")
 
-        self._thread = Thread(target=self._animate)
+        self._thread = Thread(target=self._animate, daemon=True)
         self._done = False
         self._error_in_process = False
 
@@ -56,9 +56,15 @@ class BaseLoader:
         self.stop()
 
     def start(self):
+        """
+        Start the loading animation.
+        """
         self._thread.start()
 
     def stop(self):
+        """
+        Stop the loading animation and display the finished message.
+        """
         self._done = True
 
         # Clear out the terminal line
@@ -93,14 +99,14 @@ class BaseLoader:
         Parameters
         ----------
         loading_msg : str
-          The message to display while the function is running.
+            The message to display while the function is running.
         finished_msg : str
-          The message to display when the function finishes.
+            The message to display when the function finishes.
         timeout : float
-          How long to pause between each step in the animation.
+            How long to pause between each step in the animation.
         color : str
-          The color of the animation. Options are 'white', 'purple', 'cyan',
-          'green', 'yellow', and 'red'.
+            The color of the animation. Options are 'white', 'purple', 'cyan',
+            'green', 'yellow', and 'red'.
 
         Returns
         -------
@@ -116,8 +122,54 @@ class BaseLoader:
         return decorator
 
 
-class SpinLoader(BaseLoader):
+class SpinLoader(_BaseLoader):
+    """
+    A basic spinning bar loader.
+
+    Cycles through these symbols: |, /, -, \\
+    """
     pass
 
-class DotLoader(BaseLoader):
+class DotLoader(_BaseLoader):
+    """
+    A loader comprised of three circling dots.
+
+    Cycles through these symbols: ⡆, ⠇, ⠋, ⠙, ⠸, ⢰, ⣠, ⣄
+    """
     _steps = ["⡆", "⠇", "⠋", "⠙", "⠸", "⢰", "⣠", "⣄"]
+
+class CaretLoader(_BaseLoader):
+    """
+    A loader comprised of the caret symbol spinning in a circle.
+
+    Cycles through these sybmols: ^, ›, ⌄, ‹
+    """
+    _steps = [" ^ ", "  ›", " ⌄ ", "‹  "]
+
+class ArrowLoader(_BaseLoader):
+    """
+    A sliding arrow loader.
+
+    Cycles through these symbols: >----, ->---, -->--, --->-, ---->, -----
+    """
+    _steps = [">----", "->---", "-->--", "--->-", "---->", "-----"]
+
+class AppleLoader(_BaseLoader):
+    """
+    A loader with an apple symbol () sliding back and forth.
+    """
+    _steps = ["    ", "    ", "    ", "    ", "    ", "    ", "    ", "    "]
+
+class SlidingLoader(_BaseLoader):
+    """
+    A loader with a row of equal signs sliding from side to side.
+    """
+    _steps = ["=    ", "==   ", "===  ", "==== ", " ====", "  ===", "   ==", "    =",
+              "    =", "   ==", "  ===", " ====", "==== ", "===  ", "==   ", "=    "]
+    
+class SlidingLoader2(_BaseLoader):
+    """
+    A loader with a row of dashes sliding from side to side.
+    """
+    _steps = ["—    ", "——   ", "———  ", "———— ", " ————", "  ———", "   ——", "    —",
+              "    —", "   ——", "  ———", " ————", "———— ", "———  ", "——   ", "—    "]
