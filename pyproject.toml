@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyload"
-version = "0.2.0"
+version = "0.2.1"
 description = "A simple Python module for console loading animations."
 authors = ["Adam Bates <adambates923@gmail.com>"]
 license = "MIT"
