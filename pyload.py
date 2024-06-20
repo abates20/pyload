@@ -11,6 +11,8 @@ from itertools import cycle
 from threading import Thread
 from time import sleep
 from shutil import get_terminal_size
+import sys
+import io
 
 COLORS = {
     "white": "",
@@ -24,6 +26,8 @@ COLORS = {
 }
 BOLD = "\033[1m"
 ENDC = "\033[0m"
+
+STDOUT = sys.__stdout__
 
 class _BaseLoader:
     """
@@ -70,6 +74,9 @@ class _BaseLoader:
         """
         Start the loading animation.
         """
+        self._printed_msg = io.StringIO()
+        sys.stdout = self._printed_msg
+        self._done = False
         self._thread.start()
 
     def stop(self):
@@ -77,6 +84,7 @@ class _BaseLoader:
         Stop the loading animation and display the finished message.
         """
         self._done = True
+        sys.stdout = STDOUT
 
         # Clear out the terminal line
         n_cols = get_terminal_size().columns
@@ -92,8 +100,14 @@ class _BaseLoader:
         for x in cycle(self._steps):
             if self._done:
                 break
+
             symbol = f"{self._color}{BOLD}{x}{ENDC}"
-            print(f"\r{symbol} {self._loading_msg}", flush=True, end="")
+            msg = self._loading_msg
+            if self._printed_msg.getvalue():
+                printed_msgs = self._printed_msg.getvalue().strip("\n").split("\n")
+                msg += " " + printed_msgs[-1]
+
+            print(f"\r{symbol} {msg}", flush=True, end="", file=STDOUT)
             sleep(self._timeout)
 
     @classmethod
