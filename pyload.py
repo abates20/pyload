@@ -13,6 +13,7 @@ from time import sleep
 from shutil import get_terminal_size
 import sys
 import io
+from typing import Literal
 
 COLORS = {
     "white": "",
@@ -29,6 +30,25 @@ ENDC = "\033[0m"
 
 STDOUT = sys.__stdout__
 
+INLINE = "INLINE"
+NEWLINE = "NEWLINE"
+_PRINT_MODES = Literal["INLINE", "NEWLINE"]
+
+def getpass(prompt = "Password: "):
+    """
+    Prompt for a password with echo turned off using
+    getpass.getpass. 
+    
+    Designed to work better with the loaders in this
+    module by setting `stream=sys.stdout`. Works best
+    with loaders where `print_mode=INLINE`. Loaders
+    with `print_mode=NEWLINE` will show the password
+    prompt on one line, but the cursor will be located
+    on the next line with the loading message.
+    """
+    from getpass import getpass as _getpass
+    return _getpass(prompt, stream=sys.stdout)
+
 class _BaseLoader:
     """
     The base class for small loading animations in the console.
@@ -37,7 +57,7 @@ class _BaseLoader:
     _steps = ["|", "/", "-", "\\"]
 
     def __init__(self, loading_msg: str = "Loading...", finished_msg: str = "Done!",
-                 timeout = 0.1, color = "white"):
+                 steptime = 0.1, color = "white", print_mode: _PRINT_MODES = INLINE):
         """
         Initialize the Loader.
 
@@ -47,18 +67,23 @@ class _BaseLoader:
             The message to display while the loader is running.
         finished_msg : str
             The message to display when the loader finishes.
-        timeout : float
+        steptime : float
             How long to pause between each step in the animation.
         color : str
-            The color of the animation. Options are 'white', 'purple', 'cyan',
-            'green', 'yellow', and 'red'.
+            The color of the animation. Options are 'white', 'blue', 'purple', 
+            'cyan', 'darkcyan', 'green', 'yellow', and 'red'.
+        print_mode : "INLINE" | "NEWLINE"
+            The method for displaying printed values while a loader is running.
+            Options are "INLINE" or "NEWLINE"
         """
         self._loading_msg: str = loading_msg
         self._finished_msg: str = finished_msg
-        self._timeout = timeout
+        self._steptime = steptime
         self._color = COLORS.get(color, "")
+        self._print_mode = print_mode
+        assert print_mode in [INLINE, NEWLINE], f"Unrecognized print_mode: {print_mode}"
 
-        self._thread = Thread(target=self._animate, daemon=True)
+        self._thread: Thread = Thread(target=self._animate, daemon=True)
         self._done = False
         self._error_in_process = False
 
@@ -76,7 +101,6 @@ class _BaseLoader:
         """
         self._printed_msg = io.StringIO()
         sys.stdout = self._printed_msg
-        self._done = False
         self._thread.start()
 
     def stop(self):
@@ -100,19 +124,32 @@ class _BaseLoader:
         for x in cycle(self._steps):
             if self._done:
                 break
+            print(f"\r{self._get_msg(x)}", flush=True, end="", file=STDOUT)
+            sleep(self._steptime)
 
-            symbol = f"{self._color}{BOLD}{x}{ENDC}"
-            msg = self._loading_msg
-            if self._printed_msg.getvalue():
-                printed_msgs = self._printed_msg.getvalue().strip("\n").split("\n")
-                msg += " " + printed_msgs[-1]
+    def _get_msg(self, current_symbol):
+        global INLINE, NEWLINE
 
-            print(f"\r{symbol} {msg}", flush=True, end="", file=STDOUT)
-            sleep(self._timeout)
+        symbol = f"{self._color}{BOLD}{current_symbol}{ENDC}"
+        msg = f"{symbol} {self._loading_msg}"
+
+        if self._printed_msg.getvalue():
+            printed_msg = self._printed_msg.getvalue().strip("\n").split("\n")[-1]
+            if self._print_mode == INLINE:
+                msg = msg + " " + printed_msg
+            elif self._print_mode == NEWLINE:
+                msg = printed_msg + " " * (len(msg) - len(printed_msg)) + "\n" + msg
+                self._printed_msg.truncate(0)
+            else:
+                self._error_in_process = True
+                self.stop()
+                raise ValueError(f"Unrecognized PRINT_MODE: {self._print_mode}")           
+            
+        return msg
 
     @classmethod
     def wrap(cls, loading_msg: str = "Loading...", finished_msg: str = "Done!",
-             timeout = 0.1, color = "white"):
+             steptime = 0.1, color = "white"):
         """
         Create a decorator to wrap a defined function with a loading animation.
         
@@ -127,17 +164,17 @@ class _BaseLoader:
             The message to display while the function is running.
         finished_msg : str
             The message to display when the function finishes.
-        timeout : float
+        steptime : float
             How long to pause between each step in the animation.
         color : str
-            The color of the animation. Options are 'white', 'purple', 'cyan',
-            'green', 'yellow', and 'red'.
+            The color of the animation. Options are 'white', 'blue', 'purple', 
+            'cyan', 'darkcyan', 'green', 'yellow', and 'red'.
 
         Returns
         -------
         A decorator function.
         """
-        loader = cls(loading_msg, finished_msg, timeout, color)
+        loader = cls(loading_msg, finished_msg, steptime, color)
 
         def decorator(func):
             def wrapper(*args, **kwargs):
