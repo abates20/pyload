@@ -10,7 +10,6 @@ homepage = "https://github.com/abates20/pyload"
 
 [tool.poetry.dependencies]
 python = ">=3.9"
-windows-curses = {version = "^2.3.3", platform = "win32"}
 
 
 [build-system]

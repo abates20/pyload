@@ -5,15 +5,22 @@ pyload
 A simple module for small loading animations in the console.
 The base class was derived from a
 [stackoverflow answer](https://stackoverflow.com/a/66558182).
+
+Includes some rudimentary handling of things printed to the
+console while a loader is running. Two modes for this are
+available: INLINE (default) and NEWLINE. With INLINE mode,
+printed messages will appear in the console on the same line
+as the loading message (to the right of the loading message).
+Each time something new is printed, it will replace what was
+printed before.
 """
 
 from itertools import cycle
 from threading import Thread
+from typing import Literal
 from time import sleep
 from shutil import get_terminal_size
-import sys
-import io
-from typing import Literal
+import sys, io
 
 COLORS = {
     "white": "",
@@ -34,6 +41,44 @@ INLINE = "INLINE"
 NEWLINE = "NEWLINE"
 _PRINT_MODES = Literal["INLINE", "NEWLINE"]
 
+__user_input__ = False
+_active_loader = None
+
+def input(prompt = ""):
+    import tty, sys, termios
+
+    # Set __user_input__ to True
+    global __user_input__, _active_loader
+    __user_input__ = True
+
+    print(prompt, end="", flush=True)
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    tty.setcbreak(fd)
+
+    input_chars = []
+    while True:
+        char = sys.stdin.read(1)
+        if char in ["\n", "\r"]:
+            break
+        elif char in ["\b", "\x7f"]:
+            if input_chars: 
+                input_chars.pop()
+                print("\b \b", end="", flush=True)
+        else:
+            input_chars.append(char)
+            print(char, end="", flush=True)
+
+    termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    # Set __user_input__ back to False and wait for the active loader to go to its next step
+    __user_input__ = False
+    print()
+    if isinstance(_active_loader, _BaseLoader): sleep(_active_loader._steptime)
+
+    return "".join(input_chars)
+
 def getpass(prompt = "Password: "):
     """
     Prompt for a password with echo turned off using
@@ -47,7 +92,23 @@ def getpass(prompt = "Password: "):
     on the next line with the loading message.
     """
     from getpass import getpass as _getpass
-    return _getpass(prompt, stream=sys.stdout)
+
+    # Set __user_input__ to True
+    global __user_input__
+    __user_input__ = True
+
+    password = _getpass(prompt, stream=sys.stdout)
+
+    # Set __user_input__ back to False and wait for the active loader to go to its next step
+    __user_input__ = False
+    if isinstance(_active_loader, _BaseLoader): sleep(_active_loader._steptime)
+
+    return password 
+
+def _clear_line():
+    # Clear out the terminal line
+    n_cols = get_terminal_size().columns
+    print("\r" + " " * n_cols, flush=True, end="", file=STDOUT)
 
 class _BaseLoader:
     """
@@ -86,6 +147,7 @@ class _BaseLoader:
         self._thread: Thread = Thread(target=self._animate, daemon=True)
         self._done = False
         self._error_in_process = False
+        self._formatter = _MsgFormatter(print_mode)
 
     def __enter__(self):
         self.start()
@@ -99,6 +161,10 @@ class _BaseLoader:
         """
         Start the loading animation.
         """
+        # Set the active loader
+        global _active_loader
+        _active_loader = self
+
         self._printed_msg = io.StringIO()
         sys.stdout = self._printed_msg
         self._thread.start()
@@ -107,14 +173,16 @@ class _BaseLoader:
         """
         Stop the loading animation and display the finished message.
         """
+        # Reset the active loader
+        global _active_loader
+        _active_loader = None
+
+        # Stop the loader and reset STDOUT
         self._done = True
         sys.stdout = STDOUT
 
-        # Clear out the terminal line
-        n_cols = get_terminal_size().columns
-        print("\r" + " " * n_cols, flush=True, end="")
-
         # Print the finished message
+        _clear_line()
         if not self._error_in_process:
             print(f"\r{self._finished_msg}", flush=True)
         else:
@@ -128,28 +196,13 @@ class _BaseLoader:
             sleep(self._steptime)
 
     def _get_msg(self, current_symbol):
-        global INLINE, NEWLINE
-
         symbol = f"{self._color}{BOLD}{current_symbol}{ENDC}"
-        msg = f"{symbol} {self._loading_msg}"
-
-        if self._printed_msg.getvalue():
-            printed_msg = self._printed_msg.getvalue().strip("\n").split("\n")[-1]
-            if self._print_mode == INLINE:
-                msg = msg + " " + printed_msg
-            elif self._print_mode == NEWLINE:
-                msg = printed_msg + " " * (len(msg) - len(printed_msg)) + "\n" + msg
-                self._printed_msg.truncate(0)
-            else:
-                self._error_in_process = True
-                self.stop()
-                raise ValueError(f"Unrecognized PRINT_MODE: {self._print_mode}")           
-            
-        return msg
+        loader_msg = f"{symbol} {self._loading_msg}"          
+        return self._formatter.format(loader_msg, self._printed_msg)
 
     @classmethod
     def wrap(cls, loading_msg: str = "Loading...", finished_msg: str = "Done!",
-             steptime = 0.1, color = "white"):
+             steptime = 0.1, color = "white", print_mode: _PRINT_MODES = INLINE):
         """
         Create a decorator to wrap a defined function with a loading animation.
         
@@ -169,12 +222,15 @@ class _BaseLoader:
         color : str
             The color of the animation. Options are 'white', 'blue', 'purple', 
             'cyan', 'darkcyan', 'green', 'yellow', and 'red'.
+        print_mode : "INLINE" | "NEWLINE"
+            The method for displaying printed values while a loader is running.
+            Options are "INLINE" or "NEWLINE"
 
         Returns
         -------
         A decorator function.
         """
-        loader = cls(loading_msg, finished_msg, steptime, color)
+        loader = cls(loading_msg, finished_msg, steptime, color, print_mode)
 
         def decorator(func):
             def wrapper(*args, **kwargs):
@@ -182,6 +238,71 @@ class _BaseLoader:
                     return func(*args, **kwargs)
             return wrapper
         return decorator
+    
+
+class _MsgFormatter:
+    """
+    A class for formatting loading messages with printed stuff.
+    """
+
+    def __init__(self, print_mode: _PRINT_MODES):
+        self._print_mode = print_mode
+        self._printed_lines = []
+
+    def format(self, loader_msg: str, stdio: io.StringIO):
+        """
+        Format the loader message and any printed statements for
+        display based on the current printing mode ("INLINE" or 
+        "NEWLINE"). Printing mode is specified when the formatter
+        is initialized.
+
+        Parameters
+        ----------
+        loader_msg : str
+            The current symbol and loading message for the loader.
+        stdio : io.StringIO
+            The StringIO object that sys.stdout has been pointed
+            to for capturing printed strings.
+
+        Returns
+        -------
+        str
+            The formatted string for printing to the console.
+        """
+        printed_msg = self._get_printed_msg(stdio)
+        
+        if not printed_msg is None:
+            _clear_line()
+            if self._print_mode == INLINE or __user_input__:
+                return f"{loader_msg} {printed_msg}"
+            return f"{printed_msg}\n{loader_msg}"
+        
+        return loader_msg
+
+    def _get_printed_msg(self, stdio: io.StringIO):
+        global INLINE
+        if stdio.getvalue():
+            printed_lines = stdio.getvalue().strip("\n").split("\n")
+            last_printed = printed_lines[-1]
+
+            # For INLINE printing you always just want whatever was last printed
+            if self._print_mode == INLINE or __user_input__:
+                return last_printed
+            
+            # For NEWLINE printing you just want to send back a line the first time
+            # it gets seen (otherwise you keep printing a ton of new lines)
+            last_seen = self._printed_lines[-1] if len(self._printed_lines) > 0 else None
+            if last_printed != last_seen:
+                
+                # Update the seen lines
+                if len(printed_lines) == len(self._printed_lines):
+                    self._printed_lines[-1] = last_printed
+                else:
+                    self._printed_lines.append(last_printed)
+
+                return last_printed
+            
+        return
 
 
 class SpinLoader(_BaseLoader):
