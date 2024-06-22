@@ -12,7 +12,15 @@ available: INLINE (default) and NEWLINE. With INLINE mode,
 printed messages will appear in the console on the same line
 as the loading message (to the right of the loading message).
 Each time something new is printed, it will replace what was
-printed before.
+printed before. With NEWLINE mode, each time a message is
+printed, the loading animation will shift down one row and the
+message will occupy the row where the animation previousy was.
+
+Two functions for receiving user input are provided that are
+designed to be more compatible with the loading animations
+than their standard counterparts: `input` and `getpass`.
+The standard `getpass` function can also be used if the `stream`
+parameter is set to `sys.stdout`.
 """
 
 from itertools import cycle
