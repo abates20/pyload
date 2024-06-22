@@ -45,18 +45,36 @@ __user_input__ = False
 _active_loader = None
 
 def input(prompt = ""):
+    """
+    Read a string from standard input.
+
+    > Note: currently only functional on MacOS and Linux.
+    
+    Intended to behave identically to the standard python 
+    `input` function under normal circumstances while
+    also being compatible with loading animations.
+
+    Works best with loaders that have `print_mode=INLINE`.
+    Loaders with `print_mode=NEWLINE` will behave like
+    INLINE loaders while input is being read.
+    """
     import tty, sys, termios
 
     # Set __user_input__ to True
     global __user_input__, _active_loader
     __user_input__ = True
+    
+    # Print the prompt
+    print(prompt, end=" \b", flush=True)    # end=" \b" prevents the previous
+                                            # thing printed from being displayed
+                                            # if the prompt is ""
 
-    print(prompt, end="", flush=True)
-
+    # Set the terminal to cbreak and no echo
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     tty.setcbreak(fd)
 
+    # Read and display input characters
     input_chars = []
     while True:
         char = sys.stdin.read(1)
@@ -70,11 +88,15 @@ def input(prompt = ""):
             input_chars.append(char)
             print(char, end="", flush=True)
 
+    # Reset the terminal
     termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    # Stick "\n" on the end of what is being displayed in the terminal
+    # so the next print statement is kept separate
+    print()
 
     # Set __user_input__ back to False and wait for the active loader to go to its next step
     __user_input__ = False
-    print()
     if isinstance(_active_loader, _BaseLoader): sleep(_active_loader._steptime)
 
     return "".join(input_chars)
@@ -87,9 +109,8 @@ def getpass(prompt = "Password: "):
     Designed to work better with the loaders in this
     module by setting `stream=sys.stdout`. Works best
     with loaders where `print_mode=INLINE`. Loaders
-    with `print_mode=NEWLINE` will show the password
-    prompt on one line, but the cursor will be located
-    on the next line with the loading message.
+    with `print_mode=NEWLINE` will temporarily work
+    like an INLINE loader while input is being read.
     """
     from getpass import getpass as _getpass
 
@@ -106,9 +127,12 @@ def getpass(prompt = "Password: "):
     return password 
 
 def _clear_line():
-    # Clear out the terminal line
+    """
+    Clear out the current terminal line.
+    """
     n_cols = get_terminal_size().columns
     print("\r" + " " * n_cols, flush=True, end="", file=STDOUT)
+
 
 class _BaseLoader:
     """
@@ -280,6 +304,9 @@ class _MsgFormatter:
         return loader_msg
 
     def _get_printed_msg(self, stdio: io.StringIO):
+        """
+        Gets the printed message to be displayed (if there is one).
+        """
         global INLINE
         if stdio.getvalue():
             printed_lines = stdio.getvalue().strip("\n").split("\n")
