@@ -220,6 +220,10 @@ class _BaseLoader:
         else:
             print(f"\r", flush=True)
 
+    def update_msg(self, new_msg: str):
+        self._loading_msg = new_msg
+        _clear_line()
+
     def _animate(self):
         for x in cycle(self._steps):
             if self._done:
